@@ -30,6 +30,7 @@ EVT_UPDPROGRESS = "updateProgress"
 EVT_WIFISTRENGTH = "wifiStrength"
 EVT_ETHERNET = "ethernet"
 EVT_MEMSTATUS = "memStatus"
+EVT_DISTANCE = "distance"
 
 ATTR_RESTOREFILE = "Restore File"
 ATTR_AVAILABLE_MODES = "???"
