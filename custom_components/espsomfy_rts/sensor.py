@@ -17,12 +17,20 @@ from homeassistant.const import (
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfDataRate,
     UnitOfInformation,
+    UnitOfLength,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, EVT_CONNECTED, EVT_ETHERNET, EVT_MEMSTATUS, EVT_WIFISTRENGTH
+from .const import (
+    DOMAIN,
+    EVT_CONNECTED,
+    EVT_DISTANCE,
+    EVT_ETHERNET,
+    EVT_MEMSTATUS,
+    EVT_WIFISTRENGTH,
+)
 from .controller import ESPSomfyController
 from .entity import ESPSomfyEntity
 
@@ -237,6 +245,16 @@ async def async_setup_entry(
                 data=data,
             )
         )
+
+        # HC-SR04 ultrasonic distance sensor — only expose when the firmware
+        # reports it as enabled in /discovery.
+        hcsr04 = data.get("hcsr04")
+        if isinstance(hcsr04, dict) and hcsr04.get("enabled"):
+            initial = hcsr04.get("distanceCm")
+            if isinstance(initial, (int, float)) and initial < 0:
+                initial = None
+            new_entities.append(ESPSomfyDistanceSensor(controller, data, initial))
+
     if new_entities:
         async_add_entities(new_entities)
 
@@ -337,6 +355,56 @@ class ESPSomfyWifiStrengthSensor(ESPSomfyDiagSensor):
             data=data,
         )
         self._available = True
+
+    @property
+    def should_poll(self) -> bool:
+        """Indicates that the sensor should not poll."""
+        return False
+
+
+class ESPSomfyDistanceSensor(ESPSomfyDiagSensor):
+    """HC-SR04 ultrasonic distance sensor exposed as a regular entity."""
+
+    def __init__(
+        self, controller: ESPSomfyController, data, initial_value
+    ) -> None:
+        """Initialize a new distance sensor."""
+        super().__init__(
+            controller=controller,
+            cfg=ESPSomfyDiagSensorDescription(
+                key="distance",
+                device_class=SensorDeviceClass.DISTANCE,
+                state_class=SensorStateClass.MEASUREMENT,
+                unit_of_measurement=UnitOfLength.CENTIMETERS,
+                name="Distance",
+                icon="mdi:arrow-expand-vertical",
+                suggested_display_precision=1,
+                native_value=initial_value,
+                events={EVT_DISTANCE: "distanceCm"},
+            ),
+            data=data,
+        )
+        # User-facing sensor, not a diagnostic entity.
+        self._attr_entity_category = None
+        self._available = True
+
+    def _handle_coordinator_update(self) -> None:
+        """Apply incoming distance readings without median smoothing."""
+        if self.registry_entry.disabled:
+            return
+        event = self._controller.data.get("event")
+        if event == EVT_DISTANCE and "distanceCm" in self._controller.data:
+            val = self._controller.data["distanceCm"]
+            if isinstance(val, (int, float)) and val >= 0:
+                self._available = True
+                rounded = round(float(val), 1)
+                if rounded != self._attr_native_value:
+                    self._attr_native_value = rounded
+                    self.async_write_ha_state()
+        elif event == EVT_CONNECTED and "connected" in self._controller.data:
+            if self._available != bool(self._controller.data["connected"]):
+                self._available = bool(self._controller.data["connected"])
+                self.async_write_ha_state()
 
     @property
     def should_poll(self) -> bool:
