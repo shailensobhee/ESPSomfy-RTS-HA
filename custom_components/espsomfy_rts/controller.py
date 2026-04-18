@@ -41,6 +41,7 @@ from .const import (
     API_TILTCOMMAND,
     DOMAIN,
     EVT_CONNECTED,
+    EVT_DISTANCE,
     EVT_ETHERNET,
     EVT_FWSTATUS,
     EVT_GROUPSTATE,
@@ -295,6 +296,7 @@ class ESPSomfyController(DataUpdateCoordinator):
                 EVT_WIFISTRENGTH,
                 EVT_ETHERNET,
                 EVT_MEMSTATUS,
+                EVT_DISTANCE,
             ]
         )
         await self.ws_listener.connect()
@@ -712,6 +714,8 @@ class ESPSomfyAPI:
             self._config["permissions"] = 1
         if "memory" in data:
             self._config["memory"] = data["memory"]
+        if "hcsr04" in data:
+            self._config["hcsr04"] = data["hcsr04"]
         self._needsKey = False
         if self._config["authType"] > 0:
             if self._config["permissions"] != 1:
